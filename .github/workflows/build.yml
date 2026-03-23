@@ -1,9 +1,12 @@
-name: Build Patisserie APK
+name: Build Soudjoud As-Sahw APK
 
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -29,37 +32,58 @@ jobs:
           pip install --upgrade pip setuptools
           pip install buildozer cython==0.29.33
 
-      - name: Create buildozer.spec
-        run: |
-          python3 - << 'EOF'
-          spec = """[app]
-          title = Patisserie Orientale
-          package.name = patisserieorientale
-          package.domain = org.patisserie
-          source.dir = .
-          source.include_exts = py,png,jpg,kv,atlas
-          version = 1.0.0
-          requirements = python3,kivy==2.3.0
-          orientation = portrait
-          fullscreen = 0
-          android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
-          android.api = 33
-          android.minapi = 21
-          android.ndk = 25b
-          android.sdk = 33
-          android.arch = arm64-v8a
-          android.accept_sdk_license = True
+      - name: Create assets/fonts directory
+        run: mkdir -p assets/fonts
 
-          [buildozer]
-          log_level = 2
-          warn_on_root = 1
-          """
-          # Strip leading spaces from each line
-          lines = [line.lstrip() for line in spec.splitlines()]
+      - name: Download NotoNaskhArabic font
+        run: |
+          python3 -c "
+          import urllib.request, os
+          url = 'https://github.com/google/fonts/raw/main/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          dest = 'assets/fonts/NotoNaskhArabic-Regular.ttf'
+          if not os.path.isfile(dest):
+              urllib.request.urlretrieve(url, dest)
+              print('Font downloaded OK')
+          "
+
+      - name: Create write_spec.py
+        run: |
+          cat > write_spec.py << 'PYEOF'
+          import textwrap
+          content = textwrap.dedent("""
+              [app]
+              title = Soudjoud As-Sahw
+              package.name = soudjoudassahw
+              package.domain = org.islamic
+              source.dir = .
+              source.include_exts = py,kv,ttf,png,jpg,jpeg,atlas,json
+              source.include_patterns = assets/*,assets/fonts/*,kv/*,screens/*
+              version = 1.0.0
+              requirements = python3,kivy==2.3.0,kivymd==1.2.0,pillow
+              orientation = portrait
+              fullscreen = 0
+              android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,INTERNET
+              android.api = 33
+              android.minapi = 21
+              android.ndk = 25b
+              android.sdk = 33
+              android.arch = arm64-v8a
+              android.accept_sdk_license = True
+
+              [buildozer]
+              log_level = 2
+              warn_on_root = 1
+          """).strip()
           with open("buildozer.spec", "w") as f:
-              f.write("\n".join(lines))
-          print("buildozer.spec created OK")
-          EOF
+              f.write(content + "\n")
+          print("buildozer.spec written OK")
+          PYEOF
+
+      - name: Generate buildozer.spec
+        run: python3 write_spec.py
+
+      - name: Show buildozer.spec
+        run: cat buildozer.spec
 
       - name: Cache .buildozer
         uses: actions/cache@v4
@@ -82,7 +106,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: patisserie-orientale-debug
+          name: soudjoud-assahw-debug
           path: bin/*.apk
           if-no-files-found: warn
           retention-days: 30
