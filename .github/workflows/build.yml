@@ -1,0 +1,107 @@
+name: Build Patisserie APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK (Android)
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── 1. Récupérer le code ─────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Installer Python 3.10 ─────────────────────────
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # ── 3. Dépendances système (Java, SDK, NDK, etc.) ────
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk \
+            python3-pip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 cmake libffi-dev libssl-dev \
+            build-essential libsqlite3-dev
+
+      # ── 4. Installer Buildozer + Cython ──────────────────
+      - name: Install Buildozer and Cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.33
+
+      # ── 5. Mettre en cache le répertoire .buildozer ──────
+      - name: Cache .buildozer directory
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      # ── 6. Créer le fichier buildozer.spec ───────────────
+      - name: Create buildozer.spec
+        run: |
+          cat > buildozer.spec << 'EOF'
+          [app]
+          title = Patisserie Orientale
+          package.name = patisserieorientale
+          package.domain = org.patisserie
+
+          source.dir = .
+          source.include_exts = py,png,jpg,kv,atlas,db
+
+          # Fichiers à inclure explicitement
+          source.include_patterns = database.py,main.py
+
+          version = 1.0.0
+          requirements = python3,kivy==2.3.0,sqlite3
+
+          orientation = portrait
+          fullscreen = 0
+
+          android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
+          android.api = 33
+          android.minapi = 21
+          android.ndk = 25b
+          android.sdk = 33
+          android.ndk_api = 21
+          android.arch = arm64-v8a
+
+          # Icône de l'app (optionnel — décommentez si vous avez un fichier icon.png)
+          # icon.filename = %(source.dir)s/icon.png
+
+          [buildozer]
+          log_level = 2
+          warn_on_root = 1
+          EOF
+
+      # ── 7. Compiler l'APK en mode debug ──────────────────
+      - name: Build APK (debug)
+        run: |
+          buildozer -v android debug 2>&1 | tee buildozer.log
+
+      # ── 8. Publier l'APK comme artefact téléchargeable ───
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patisserie-orientale-debug
+          path: bin/*.apk
+          retention-days: 30
+
+      # ── 9. Publier le log en cas d'erreur ────────────────
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: buildozer.log
+          retention-days: 7
